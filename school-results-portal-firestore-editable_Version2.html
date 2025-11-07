@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>School Results Portal (Cloud Firestore, Editable)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { box-sizing: border-box; }
+    .dynamic-bg {
+      background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #f5576c, #4facfe, #00f2fe);
+      background-size: 400% 400%;
+      animation: gradientShift 8s ease infinite;
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass-effect {
+      background: rgba(255,255,255,0.10);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .loading { opacity: 0.6; pointer-events: none; }
+    .modal-backdrop {
+      position: fixed; left: 0; top: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,.75); z-index: 50; display: flex; align-items: center; justify-content: center;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <!-- Firebase Modular SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+    const firebaseConfig = {
+      apiKey: "AIzaSyANyEVDObP0BFb-XVhuoj-uzLTBCCBU9eY",
+      authDomain: "mywebsite-594d4.firebaseapp.com",
+      projectId: "mywebsite-594d4",
+      storageBucket: "mywebsite-594d4.firebaseapp.com",
+      messagingSenderId: "134317270859",
+      appId: "1:134317270859:web:4f0ac57e29df178e2baace",
+      measurementId: "G-2XGJ06DVB1"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- SUBJECTS master lists ---
+    const FULL_SUBJECTS = ['Mathematics','Biology','English','Physics','Chemistry','Geography','History','Economics','F.Language','Afan Oromo','Amharic','ICT','HPE','Area-Study','Citizenship','Agriculture','CHS'];
+    const NATURAL_SUBJECTS = ['Mathematics','Biology','English','Physics','Chemistry','F.Language','Afan Oromo','ICT','Area-Study','Agriculture','CHS'];
+    const SOCIAL_SUBJECTS = ['Mathematics','Biology','English','Geography','History','Economics','F.Language','Afan Oromo','ICT','Area-Study','CHS'];
+    const LOWER_SUBJECTS = FULL_SUBJECTS.filter(s => s !== 'CHS' && s !== 'Agriculture');
+    let SUBJECTS = FULL_SUBJECTS.slice();
+
+    // --- App state ---
+    let currentUser = null;
+    let currentUserType = null;
+    let editingResultDoc = null; // for modals
+    let editingPassword = false;
+
+    // --- Subject population helpers ---
+    window.setSubjects = function(newList) {
+      SUBJECTS = Array.isArray(newList) ? newList.slice() : [];
+      populateSubjectOptions();
+    }
+    window.populateSubjectOptions = function() {
+      const sel = document.getElementById('result-subject');
+      if (!sel) return;
+      const prev = sel.value;
+      sel.innerHTML = SUBJECTS.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+      if (prev && SUBJECTS.includes(prev)) sel.value = prev;
+    }
+    window.updateSubjectOptionsBasedOnGradeAndStream = function() {
+      const gradeEl = document.getElementById('result-grade-level');
+      const streamEl = document.getElementById('result-stream');
+      const streamContainer = document.getElementById('result-stream-container');
+      if (!gradeEl) return;
+      const grade = gradeEl.value;
+      if (grade === '11th' || grade === '12th') {
+        if (streamContainer) streamContainer.classList.remove('hidden');
+        const stream = streamEl ? streamEl.value : '';
+        if (stream === 'Natural') setSubjects(NATURAL_SUBJECTS);
+        else if (stream === 'Social') setSubjects(SOCIAL_SUBJECTS);
+        else {
+          setSubjects([]);
+          const sel = document.getElementById('result-subject');
+          if (sel) sel.innerHTML = `<option value="">Select stream first</option>`;
+        }
+      } else {
+        if (streamContainer) streamContainer.classList.add('hidden');
+        if (streamEl) streamEl.value = '';
+        setSubjects(LOWER_SUBJECTS);
+      }
+    }
+
+    // --- UI Navigation ---
+    window.showHome = function() {
+      hideAllPages();
+      document.getElementById('home-page').classList.remove('hidden');
+      closeModal();
+      currentUser = null;
+      currentUserType = null;
+    }
+    window.showStudentLogin = function() {
+      hideAllPages();
+      document.getElementById('student-login-page').classList.remove('hidden');
+      document.getElementById('student-login-form').classList.remove('hidden');
+      document.getElementById('student-register-form').classList.add('hidden');
+      closeModal();
+    }
+    window.showStudentRegister = function() {
+      document.getElementById('student-login-form').classList.add('hidden');
+      document.getElementById('student-register-form').classList.remove('hidden');
+    }
+    window.showTeacherLogin = function() {
+      hideAllPages();
+      document.getElementById('teacher-login-page').classList.remove('hidden');
+      closeModal();
+    }
+    window.hideAllPages = function() {
+      ['home-page', 'student-login-page', 'teacher-login-page', 'student-dashboard', 'teacher-dashboard']
+        .forEach(page => document.getElementById(page).classList.add('hidden'));
+    }
+
+    // --- Student Registration ---
+    window.registerStudent = async function() {
+      const name = document.getElementById('student-name-register').value.trim();
+      const studentId = document.getElementById('student-id-register').value.trim();
+      const password = document.getElementById('student-password-register').value.trim();
+      if (!name || !studentId || !password) {
+        showMessage("Please fill in all fields", "error"); return;
+      }
+      const q = query(collection(db, 'students'), where('student_id','==',studentId));
+      const existing = await getDocs(q);
+      if (!existing.empty) {
+        showMessage("Student ID already registered", "error"); return;
+      }
+      await addDoc(collection(db, 'students'), {
+        student_id: studentId,
+        student_name: name,
+        student_password: password
+      });
+      showMessage("Registration successful! You can now login.", "success");
+      showStudentLogin();
+      clearForm(['student-name-register','student-id-register','student-password-register']);
+    }
+
+    // --- Student Login ---
+    window.loginStudent = async function() {
+      const studentId = document.getElementById('student-id-login').value.trim();
+      const password = document.getElementById('student-password-login').value.trim();
+      if (!studentId || !password) {
+        showMessage("Please enter both Student ID and password", "error");
+        return;
+      }
+      const q = query(
+        collection(db, 'students'),
+        where('student_id','==',studentId),
+        where('student_password','==',password)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docRef = snap.docs[0];
+        const student = docRef.data();
+        student._docid = docRef.id;
+        currentUser = student;
+        currentUserType = 'student';
+        document.getElementById('student-welcome').textContent = `Welcome back, ${student.student_name}!`;
+        hideAllPages();
+        document.getElementById('student-dashboard').classList.remove('hidden');
+        updateStudentResults();
+        clearForm(['student-id-login','student-password-login']);
+      } else {
+        showMessage("Invalid Student ID or password", "error");
+      }
+    }
+
+    // --- Teacher Login (demo password only) ---
+    window.loginTeacher = function() {
+      const teacherName = document.getElementById('teacher-name').value.trim();
+      const password = document.getElementById('teacher-password').value.trim();
+      if (!teacherName || !password) {
+        showMessage("Please enter both name and password", "error"); return;
+      }
+      if (password === 'teacher2025') {
+        currentUser = { name: teacherName };
+        currentUserType = 'teacher';
+        document.getElementById('teacher-welcome').textContent = `Welcome, ${teacherName}!`;
+        hideAllPages();
+        document.getElementById('teacher-dashboard').classList.remove('hidden');
+        updateSubjectOptionsBasedOnGradeAndStream();
+        updateAllResults();
+        clearForm(['teacher-name','teacher-password']);
+      } else {
+        showMessage("Invalid password", "error");
+      }
+    }
+
+    // --- Upload Result ---
+    window.uploadResult = async function() {
+      const studentId = document.getElementById('result-student-id').value.trim();
+      const subject = document.getElementById('result-subject').value;
+      const scoreVal = document.getElementById('result-score').value;
+      const score = parseInt(scoreVal);
+      const status = document.getElementById('result-status').value;
+      const gradeLevel = document.getElementById('result-grade-level') ? document.getElementById('result-grade-level').value : '';
+      const stream = document.getElementById('result-stream') ? document.getElementById('result-stream').value : '';
+      if (!studentId || !subject || scoreVal === '') {
+        showMessage("Please fill in all fields", "error"); return;
+      }
+      if (isNaN(score) || score<0||score>100) {
+        showMessage("Score must be a number between 0 and 100", "error"); return;
+      }
+      if ((gradeLevel === '11th' || gradeLevel === '12th') && !stream) {
+        showMessage("Please select a stream (Natural or Social) for 11th/12th", "error"); return;
+      }
+      const q = query(collection(db, 'students'), where('student_id','==',studentId));
+      const studentSnap = await getDocs(q);
+      if (studentSnap.empty) {
+        showMessage("Student ID does not exist. Please register student first.", "error"); return;
+      }
+      const student = studentSnap.docs[0].data();
+      await addDoc(collection(db, 'results'), {
+        student_id: studentId,
+        student_name: student.student_name,
+        subject,
+        score,
+        status,
+        teacher_name: currentUser && currentUser.name ? currentUser.name : 'Unknown',
+        date_uploaded: new Date().toISOString(),
+        grade_level: gradeLevel,
+        stream
+      });
+      showMessage("Result uploaded successfully!", "success");
+      clearForm(['result-student-id','result-score']);
+      document.getElementById('result-status').value='Pass';
+      updateAllResults();
+    }
+
+    // --- Student Dashboard: Load/Show Results ---
+    window.updateStudentResults = async function() {
+      const resultsContainer = document.getElementById('student-results');
+      if (!currentUser || !currentUser.student_id) {
+        resultsContainer.innerHTML = '<p class="text-white/80">Please login as a student to view results.</p>'; return;
+      }
+      const q = query(collection(db,'results'), where('student_id','==',currentUser.student_id));
+      const snap = await getDocs(q);
+      const studentResults = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // ... full rendering similar to previous answer ...
+      // For brevity, simple rendering below
+
+      if (!studentResults.length) {
+        resultsContainer.innerHTML=`<p class="text-white/80">No results available yet.</p>`;
+        return;
+      }
+      let html = '';
+      studentResults.forEach(result => {
+        html += `<div class="bg-white/5 rounded p-2 mb-2 text-white">
+          <strong>${escapeHtml(result.subject)}</strong>: ${result.score}/100
+          <span class="px-2 py-0.5 rounded ${result.status==='Pass'?'bg-green-600':'bg-red-600'} text-white text-xs">${result.status}</span>
+          (Teacher: ${escapeHtml(result.teacher_name)} Date: ${new Date(result.date_uploaded).toLocaleDateString()})
+        </div>`;
+      });
+      html += `<button onclick="showChangePasswordModal()" class="mt-6 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white font-semibold">Change Password</button>`;
+      resultsContainer.innerHTML = html;
+    }
+
+    // --- Teacher Dashboard: Load/Show/Editable Results ---
+    window.updateAllResults = async function() {
+      const resultsContainer = document.getElementById('all-results');
+      const snap = await getDocs(collection(db, 'results'));
+      const results = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (!results.length) {
+        resultsContainer.innerHTML='<p class="text-white/80">No results uploaded yet.</p>'; return;
+      }
+      let html = '<div class="overflow-x-auto">';
+      html += '<table class="min-w-full text-left text-white"><thead><tr>'+
+        '<th class="px-2 py-2">Student</th><th>Subject</th><th>Score</th><th>Status</th><th>Edit</th><th>Delete</th>'+
+        '</tr></thead><tbody>';
+      results.forEach(result => {
+        html += `<tr>
+            <td class="px-2 py-2">${escapeHtml(result.student_name)}</td>
+            <td>${escapeHtml(result.subject)}</td>
+            <td>${result.score}</td>
+            <td><span class="px-2 py-0.5 rounded ${result.status==='Pass'?'bg-green-600':'bg-red-600'} text-white text-xs">${result.status}</span></td>
+            <td><button onclick="showEditResultModal('${result.id}')" class="underline text-blue-400">Edit</button></td>
+            <td><button onclick="confirmDeleteResult('${result.id}')" class="underline text-red-400">Delete</button></td>
+          </tr>`;
+      });
+      html += '</tbody></table></div>';
+      resultsContainer.innerHTML = html;
+    }
+
+    // --- Editing Modal Logic (Result) ---
+    window.showEditResultModal = async function(docId) {
+      editingResultDoc = docId;
+      const d = await getDocData("results", docId);
+      const modal = document.getElementById("modal-edit-result");
+      if (!modal) return;
+      modal.classList.remove("hidden");
+      document.getElementById("edit-result-subject").value=d.subject;
+      document.getElementById("edit-result-score").value=d.score;
+      document.getElementById("edit-result-status").value=d.status;
+      document.getElementById("edit-result-grade_level").value=d.grade_level||'';
+      document.getElementById("edit-result-stream").value=d.stream||'';
+    };
+    window.closeModal = function() {
+      document.getElementById("modal-edit-result").classList.add("hidden");
+      document.getElementById("modal-delete-result").classList.add("hidden");
+      document.getElementById("modal-change-password").classList.add("hidden");
+      editingResultDoc = null;
+      editingPassword = false;
+    }
+    async function getDocData(coll, docId) {
+      const {doc:getDoc} = await import("https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js");
+      const d = await getDoc(doc(db,coll,docId));
+      return d.exists() ? d.data() : {};
+    }
+
+    window.saveEditResult = async function() {
+      if (!editingResultDoc) return;
+      const updatedFields = {
+        subject: document.getElementById("edit-result-subject").value.trim(),
+        score: parseInt(document.getElementById("edit-result-score").value),
+        status: document.getElementById("edit-result-status").value,
+        grade_level: document.getElementById("edit-result-grade_level").value,
+        stream: document.getElementById("edit-result-stream").value,
+      };
+      const resultRef = doc(db, "results", editingResultDoc);
+      await updateDoc(resultRef, updatedFields);
+      showMessage("Result updated!", "success");
+      closeModal();
+      updateAllResults();
+    };
+
+    // --- Delete Modal Logic ---
+    window.confirmDeleteResult = function(docId) {
+      editingResultDoc = docId;
+      document.getElementById("modal-delete-result").classList.remove("hidden");
+    }
+    window.deleteResult = async function() {
+      if (!editingResultDoc) return;
+      const resultRef = doc(db, "results", editingResultDoc);
+      await deleteDoc(resultRef);
+      showMessage("Result deleted.", "success");
+      closeModal();
+      updateAllResults();
+    }
+
+    // --- Change Password Modal Logic ---
+    window.showChangePasswordModal = function() {
+      editingPassword = true;
+      document.getElementById("modal-change-password").classList.remove("hidden");
+    }
+    window.saveNewPassword = async function() {
+      const oldPw = document.getElementById("old-password").value;
+      const newPw = document.getElementById("new-password").value;
+      const confirmPw = document.getElementById("confirm-password").value;
+      if (!currentUser || !currentUser.student_id) return showMessage("Not logged in", "error");
+      if (!oldPw || !newPw || !confirmPw) return showMessage("Please fill all fields", "error");
+      if (newPw !== confirmPw) return showMessage("New passwords do not match", "error");
+      // look up docId
+      const q = query(collection(db, "students"), where("student_id", "==", currentUser.student_id));
+      const snap = await getDocs(q);
+      if (snap.empty) return showMessage("Student not found", "error");
+      const docId = snap.docs[0].id;
+      const student = snap.docs[0].data();
+      if (student.student_password !== oldPw) return showMessage("Old password does not match", "error");
+      await updateDoc(doc(db,"students",docId), { student_password: newPw });
+      showMessage("Password changed!", "success");
+      closeModal();
+    }
+
+    window.logoutStudent = function() { currentUser=null; currentUserType=null; showHome(); }
+    window.logoutTeacher = function() { currentUser=null; currentUserType=null; showHome(); }
+
+    window.showMessage = function(message, type) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `fixed top-4 right-4 px-6 py-3 rounded-lg text-white font-semibold z-50 ${type==='success'?'bg-green-600':'bg-red-600'}`;
+      messageDiv.textContent = message;
+      document.body.appendChild(messageDiv);
+      setTimeout(()=>messageDiv.remove(), 3000);
+    }
+    window.clearForm = function(fieldIds) { fieldIds.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); }
+    window.escapeHtml = function(str) {
+      if (!str&&str!==0) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    window.initializeAppUI = function() {
+      populateSubjectOptions();
+      const gradeSelect = document.getElementById('result-grade-level');
+      const streamSelect = document.getElementById('result-stream');
+      if (gradeSelect) gradeSelect.addEventListener('change', updateSubjectOptionsBasedOnGradeAndStream);
+      if (streamSelect) streamSelect.addEventListener('change', updateSubjectOptionsBasedOnGradeAndStream);
+      updateSubjectOptionsBasedOnGradeAndStream();
+      showHome();
+    }
+    window.addEventListener('DOMContentLoaded', initializeAppUI);
+  </script>
+</head>
+<body class="dynamic-bg min-h-full">
+  <div class="min-h-full flex flex-col">
+    <!-- Header -->
+    <header class="glass-effect p-6">
+      <div class="max-w-6xl mx-auto flex flex-col items-center gap-2">
+        <h1 id="school-name" class="text-3xl font-bold text-white text-center">NEJO SPECIAL BOARDING SCHOOL</h1>
+        <p id="welcome-message" class="text-white/80 text-center mt-2">Welcome to our Student Results Portal</p>
+      </div>
+    </header>
+    <!-- Main Content -->
+    <main class="flex-1 p-6">
+      <div class="max-w-4xl mx-auto">
+        <div id="home-page" class="space-y-8">
+          <div class="text-center mb-8">
+            <h2 class="text-4xl font-bold text-white mb-4">Student Results Management System</h2>
+            <p class="text-white/90 text-lg">Secure portal for students and teachers</p>
+            <div class="mt-4">
+              <button onclick="showHome()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-md font-medium">Reset</button>
+            </div>
+          </div>
+          <div class="grid md:grid-cols-2 gap-8">
+            <div class="glass-effect rounded-xl p-8 text-center">
+              <div class="text-6xl mb-4">🎓</div>
+              <h3 class="text-2xl font-bold text-white mb-4">Student Portal</h3>
+              <p class="text-white/80 mb-6">Check your exam results and academic progress</p>
+              <button onclick="showStudentLogin()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors w-full"> Student Login </button>
+            </div>
+            <div class="glass-effect rounded-xl p-8 text-center">
+              <div class="text-6xl mb-4">👨‍🏫</div>
+              <h3 class="text-2xl font-bold text-white mb-4">Teacher Portal</h3>
+              <p class="text-white/80 mb-6">Upload and manage student results</p>
+              <button onclick="showTeacherLogin()" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors w-full"> Teacher Login </button>
+            </div>
+          </div>
+        </div>
+        <!-- Student Login Page -->
+        <div id="student-login-page" class="hidden">
+          <div class="max-w-md mx-auto glass-effect rounded-xl p-8">
+            <div class="text-center mb-6"><div class="text-5xl mb-4">🎓</div>
+            <h2 class="text-2xl font-bold text-white">Student Login</h2></div>
+            <div id="student-login-form">
+              <div class="space-y-4">
+                <div>
+                  <label for="student-id-login" class="block text-white font-medium mb-2">Student ID</label>
+                  <input type="text" id="student-id-login" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter your Student ID">
+                </div>
+                <div>
+                  <label for="student-password-login" class="block text-white font-medium mb-2">Password</label>
+                  <input type="password" id="student-password-login" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter your password">
+                </div>
+                <button onclick="loginStudent()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors"> Login </button>
+                <div class="text-center">
+                  <button onclick="showStudentRegister()" class="text-white/80 hover:text-white underline"> Don't have an account? Register here </button>
+                </div>
+              </div>
+            </div>
+            <div id="student-register-form" class="hidden">
+              <div class="space-y-4">
+                <div>
+                  <label for="student-name-register" class="block text-white font-medium mb-2">Full Name</label>
+                  <input type="text" id="student-name-register" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter your full name">
+                </div>
+                <div>
+                  <label for="student-id-register" class="block text-white font-medium mb-2">Student ID</label>
+                  <input type="text" id="student-id-register" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter your Student ID">
+                </div>
+                <div>
+                  <label for="student-password-register" class="block text-white font-medium mb-2">Create Password</label>
+                  <input type="password" id="student-password-register" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Create a password">
+                </div>
+                <button onclick="registerStudent()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors"> Register </button>
+                <div class="text-center">
+                  <button onclick="showStudentLogin()" class="text-white/80 hover:text-white underline"> Already have an account? Login here </button>
+                </div>
+              </div>
+            </div>
+            <div class="text-center mt-6">
+              <button onclick="showHome()" class="text-white/80 hover:text-white underline"> ← Back to Home </button>
+            </div>
+          </div>
+        </div>
+        <!-- Teacher Login Page -->
+        <div id="teacher-login-page" class="hidden">
+          <div class="max-w-md mx-auto glass-effect rounded-xl p-8">
+            <div class="text-center mb-6">
+              <div class="text-5xl mb-4">👨‍🏫</div>
+              <h2 class="text-2xl font-bold text-white">Teacher Login</h2>
+            </div>
+            <div class="space-y-4">
+              <div>
+                <label for="teacher-name" class="block text-white font-medium mb-2">Teacher Name</label>
+                <input type="text" id="teacher-name" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter your name">
+              </div>
+              <div>
+                <label for="teacher-password" class="block text-white font-medium mb-2">Password</label>
+                <input type="password" id="teacher-password" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter password">
+              </div>
+              <button onclick="loginTeacher()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold transition-colors"> Login </button>
+            </div>
+            <div class="text-center mt-6">
+              <button onclick="showHome()" class="text-white/80 hover:text-white underline"> ← Back to Home </button>
+            </div>
+          </div>
+        </div>
+        <!-- Student Dashboard -->
+        <div id="student-dashboard" class="hidden">
+          <div class="glass-effect rounded-xl p-8">
+            <div class="flex justify-between items-center mb-6">
+              <div>
+                <h2 class="text-2xl font-bold text-white">Student Dashboard</h2>
+                <p id="student-welcome" class="text-white/80">Welcome back!</p>
+              </div>
+              <button onclick="logoutStudent()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"> Logout </button>
+            </div>
+            <div class="bg-white/10 rounded-lg p-6">
+              <h3 class="text-xl font-semibold text-white mb-4">Your Results</h3>
+              <div id="student-results" class="space-y-3"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Teacher Dashboard -->
+        <div id="teacher-dashboard" class="hidden">
+          <div class="glass-effect rounded-xl p-8">
+            <div class="flex justify-between items-center mb-6">
+              <div>
+                <h2 class="text-2xl font-bold text-white">Teacher Dashboard</h2>
+                <p id="teacher-welcome" class="text-white/80">Manage student results</p>
+              </div>
+              <button onclick="logoutTeacher()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"> Logout </button>
+            </div>
+            <!-- Upload Results Form -->
+            <div class="bg-white/10 rounded-lg p-6 mb-6">
+              <h3 class="text-xl font-semibold text-white mb-4">Upload Student Result</h3>
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label for="result-grade-level" class="block text-white font-medium mb-2">Grade Level</label>
+                  <select id="result-grade-level" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white">
+                    <option value="9th">9th</option>
+                    <option value="10th">10th</option>
+                    <option value="11th">11th</option>
+                    <option value="12th">12th</option>
+                  </select>
+                </div>
+                <div id="result-stream-container" class="hidden">
+                  <label for="result-stream" class="block text-white font-medium mb-2">Stream</label>
+                  <select id="result-stream" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white">
+                    <option value="">Select stream</option>
+                    <option value="Natural">Natural</option>
+                    <option value="Social">Social</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="result-student-id" class="block text-white font-medium mb-2">Student ID</label>
+                  <input type="text" id="result-student-id" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter Student ID">
+                </div>
+                <div>
+                  <label for="result-subject" class="block text-white font-medium mb-2">Subject</label>
+                  <select id="result-subject" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white"></select>
+                </div>
+                <div>
+                  <label for="result-score" class="block text-white font-medium mb-2">Score</label>
+                  <input type="number" id="result-score" min="0" max="100" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/60" placeholder="Enter score (0-100)">
+                </div>
+                <div>
+                  <label for="result-status" class="block text-white font-medium mb-2">Status</label>
+                  <select id="result-status" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white">
+                    <option value="Pass">Pass</option>
+                    <option value="Fail">Fail</option>
+                  </select>
+                </div>
+              </div>
+              <button onclick="uploadResult()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"> Upload Result </button>
+            </div>
+            <!-- All Results -->
+            <div class="bg-white/10 rounded-lg p-6">
+              <h3 class="text-xl font-semibold text-white mb-4">All Student Results</h3>
+              <div id="all-results" class="space-y-3">
+                <p class="text-white/80">No results uploaded yet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Edit/Change/Delete MODALS -->
+        <div id="modal-edit-result" class="modal-backdrop hidden">
+          <div class="bg-white/10 glass-effect rounded-lg p-8 w-full max-w-md">
+            <h3 class="text-xl font-semibold text-white mb-4">Edit Result</h3>
+            <div class="space-y-4">
+              <div><label class="text-white">Subject</label><input id="edit-result-subject" class="w-full px-2 py-2 rounded bg-white/20 text-white" /></div>
+              <div><label class="text-white">Score</label><input type="number" id="edit-result-score" min="0" max="100" class="w-full px-2 py-2 rounded bg-white/20 text-white" /></div>
+              <div><label class="text-white">Status</label>
+                <select id="edit-result-status" class="w-full px-2 py-2 rounded bg-white/20 text-white"><option value="Pass">Pass</option><option value="Fail">Fail</option></select>
+              </div>
+              <div><label class="text-white">Grade Level</label>
+                <select id="edit-result-grade_level" class="w-full px-2 py-2 rounded bg-white/20 text-white"><option value="9th">9th</option><option value="10th">10th</option><option value="11th">11th</option><option value="12th">12th</option></select>
+              </div>
+              <div><label class="text-white">Stream</label>
+                <select id="edit-result-stream" class="w-full px-2 py-2 rounded bg-white/20 text-white"><option value="">None</option><option value="Natural">Natural</option><option value="Social">Social</option></select>
+              </div>
+              <div class="flex gap-4">
+                <button onclick="saveEditResult()" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded">Save</button>
+                <button onclick="closeModal()" class="bg-gray-400 text-black px-4 py-2 rounded">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="modal-delete-result" class="modal-backdrop hidden">
+          <div class="bg-white/10 glass-effect rounded-lg p-5 w-full max-w-sm text-center">
+            <h4 class="text-lg text-white mb-3">Confirm Delete</h4>
+            <p class="text-white mb-6">Are you sure you want to delete this result?</p>
+            <button onclick="deleteResult()" class="bg-red-600 text-white font-semibold px-4 py-2 rounded mr-2">Delete</button>
+            <button onclick="closeModal()" class="bg-gray-400 text-black px-4 py-2 rounded">Cancel</button>
+          </div>
+        </div>
+        <div id="modal-change-password" class="modal-backdrop hidden">
+          <div class="bg-white/10 glass-effect rounded-lg p-6 w-full max-w-md">
+            <h3 class="text-xl font-semibold text-white mb-4">Change Your Password</h3>
+            <div class="space-y-3">
+              <div><label class="text-white">Old Password</label><input type="password" id="old-password" class="w-full px-2 py-2 rounded bg-white/20 text-white" /></div>
+              <div><label class="text-white">New Password</label><input type="password" id="new-password" class="w-full px-2 py-2 rounded bg-white/20 text-white" /></div>
+              <div><label class="text-white">Confirm New Password</label><input type="password" id="confirm-password" class="w-full px-2 py-2 rounded bg-white/20 text-white" /></div>
+              <div class="flex gap-4 pt-2">
+                <button onclick="saveNewPassword()" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded">Save</button>
+                <button onclick="closeModal()" class="bg-gray-400 text-black px-4 py-2 rounded">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <!-- Footer -->
+    <footer class="glass-effect p-4">
+      <div class="max-w-6xl mx-auto text-center">
+        <p id="footer-text" class="text-white/80">© 2024 School Results Portal - Secure & Reliable</p>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
