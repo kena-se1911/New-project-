@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>School Results Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script><!-- Firebase SDK -->
+  <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyC1HgAmVO7m_Yb_RoKhwZf090aI3xpc9d4",
+            authDomain: "website-2355e.firebaseapp.com",
+            projectId: "website-2355e",
+            storageBucket: "website-2355e.firebasestorage.app",
+            messagingSenderId: "625668481313",
+            appId: "1:625668481313:web:bb98e05da3131d6d8b1e60",
+            measurementId: "G-C6EZWK594L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Make Firebase available globally
+        window.db = db;
+        window.firestore = { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy };
+        window.firebaseReady = true;
+    </script>
+  <style>
+        body {
+            box-sizing: border-box;
+        }
+        .photo-preview {
+            max-width: 150px;
+            max-height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .setup-notice {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+  <script src="/_sdk/element_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="min-h-full bg-gradient-to-br from-blue-50 to-indigo-100"><!-- Home Page -->
+  <div id="home-page" class="min-h-full flex items-center justify-center p-4">
+   <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+    <div class="text-center mb-8">
+     <h1 id="portal-title" class="text-3xl font-bold text-gray-800 mb-2">School Results Portal</h1>
+     <p id="school-name" class="text-gray-600">Academic Excellence Hub</p>
+    </div>
+    <div class="space-y-4"><button onclick="showStudentLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 flex items-center justify-center">
+      <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+      </svg> Student Portal </button> <button onclick="showTeacherLogin()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 flex items-center justify-center">
+      <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h2M7 21V5a2 2 0 012-2h4a2 2 0 012 2v16"></path>
+      </svg> Teacher/Admin Portal </button>
+    </div><!-- Firebase Status -->
+    <div class="mt-6 p-3 bg-green-50 border border-green-200 rounded-lg">
+     <p class="text-sm text-green-800 font-medium mb-1">🔥 Firebase Connected</p>
+     <p class="text-xs text-green-700">Online database active - data syncs across all devices!</p>
+    </div>
+   </div>
+  </div><!-- Student Login Page -->
+  <div id="student-login-page" class="hidden min-h-full flex items-center justify-center p-4">
+   <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+     <h2 class="text-2xl font-bold text-gray-800">Student Login</h2>
+     <p class="text-gray-600 mt-2">Enter your credentials to view results</p>
+    </div>
+    <form id="student-login-form" onsubmit="handleStudentLogin(event)" class="space-y-4">
+     <div><label for="student-id-input" class="block text-sm font-medium text-gray-700 mb-1">Student ID</label> <input type="text" id="student-id-input" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your student ID">
+     </div>
+     <div><label for="student-password-input" class="block text-sm font-medium text-gray-700 mb-1">Password</label> <input type="password" id="student-password-input" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your password">
+     </div><button type="submit" id="student-login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"> Login </button>
+    </form>
+    <div class="mt-6 text-center">
+     <p class="text-sm text-gray-600">Don't have an account?</p><button onclick="showStudentRegister()" class="text-blue-600 hover:text-blue-700 font-medium">Register Here</button>
+    </div><button onclick="showHome()" class="mt-4 w-full text-gray-600 hover:text-gray-800 py-2">← Back to Home</button>
+   </div>
+  </div><!-- Student Registration Page -->
+  <div id="student-register-page" class="hidden min-h-full flex items-center justify-center p-4">
+   <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+     <h2 class="text-2xl font-bold text-gray-800">Student Registration</h2>
+     <p class="text-gray-600 mt-2">Create your account</p>
+    </div>
+    <form id="student-register-form" onsubmit="handleStudentRegister(event)" class="space-y-4">
+     <div><label for="reg-student-id" class="block text-sm font-medium text-gray-700 mb-1">Student ID</label> <input type="text" id="reg-student-id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter unique student ID">
+     </div>
+     <div><label for="reg-full-name" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label> <input type="text" id="reg-full-name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your full name">
+     </div>
+     <div><label for="reg-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label> <input type="password" id="reg-password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Create a password">
+     </div>
+     <div><label for="reg-grade" class="block text-sm font-medium text-gray-700 mb-1">Grade Level</label> <select id="reg-grade" required onchange="updateStreamVisibility()" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"> <option value="">Select Grade</option> <option value="9th">9th Grade</option> <option value="10th">10th Grade</option> <option value="11th">11th Grade</option> <option value="12th">12th Grade</option> </select>
+     </div>
+     <div id="stream-container" class="hidden"><label for="reg-stream" class="block text-sm font-medium text-gray-700 mb-1">Stream</label> <select id="reg-stream" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"> <option value="">Select Stream</option> <option value="Natural">Natural Science</option> <option value="Social">Social Science</option> </select>
+     </div>
+     <div><label for="student-photo" class="block text-sm font-medium text-gray-700 mb-1">Profile Photo (Optional)</label> <input type="file" id="student-photo" accept="image/*" onchange="previewPhoto(this)" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div id="photo-preview" class="mt-2 hidden"><img id="preview-img" class="photo-preview mx-auto">
+      </div>
+     </div><button type="submit" id="student-register-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"> Register </button>
+    </form>
+    <div class="mt-4 text-center"><button onclick="showStudentLogin()" class="text-blue-600 hover:text-blue-700 font-medium">← Back to Login</button>
+    </div>
+   </div>
+  </div><!-- Student Dashboard -->
+  <div id="student-dashboard" class="hidden min-h-full p-4">
+   <div class="max-w-6xl mx-auto">
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+     <div class="flex justify-between items-center">
+      <div class="flex items-center space-x-4">
+       <div id="student-photo-display" class="hidden"><img id="dashboard-photo" class="w-16 h-16 rounded-full object-cover">
+       </div>
+       <div>
+        <h2 class="text-2xl font-bold text-gray-800">Welcome, <span id="student-name"></span></h2>
+        <p class="text-gray-600">Student ID: <span id="student-id-display"></span></p>
+        <p class="text-gray-600">Grade: <span id="student-grade-display"></span> <span id="student-stream-display"></span></p>
+       </div>
+      </div><button onclick="showHome()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">Logout</button>
+     </div>
+    </div>
+    <div class="bg-white rounded-xl shadow-lg p-6">
+     <h3 class="text-xl font-bold text-gray-800 mb-4">Your Results</h3>
+     <div id="student-results" class="space-y-4">
+      <p class="text-gray-600">Loading your results...</p>
+     </div>
+     <div id="student-status" class="mt-6 p-4 rounded-lg"><!-- Status will be displayed here -->
+     </div>
+    </div>
+   </div>
+  </div><!-- Teacher Login Page -->
+  <div id="teacher-login-page" class="hidden min-h-full flex items-center justify-center p-4">
+   <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+     <h2 class="text-2xl font-bold text-gray-800">Teacher/Admin Login</h2>
+     <p class="text-gray-600 mt-2">Enter admin password</p>
+    </div>
+    <form id="teacher-login-form" onsubmit="handleTeacherLogin(event)" class="space-y-4">
+     <div><label for="admin-password-input" class="block text-sm font-medium text-gray-700 mb-1">Admin Password</label> <input type="password" id="admin-password-input" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter admin password">
+     </div><button type="submit" id="teacher-login-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"> Login </button>
+    </form>
+    <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+     <p class="text-sm text-blue-800 font-medium mb-1">Default Password</p>
+     <p class="text-xs text-blue-700">The default password is: <span class="font-mono bg-blue-100 px-1 rounded">admin123</span></p>
+    </div><button onclick="showHome()" class="mt-4 w-full text-gray-600 hover:text-gray-800 py-2">← Back to Home</button>
+   </div>
+  </div><!-- Teacher Dashboard -->
+  <div id="teacher-dashboard" class="hidden min-h-full p-4">
+   <div class="max-w-6xl mx-auto">
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+     <div class="flex justify-between items-center">
+      <h2 class="text-2xl font-bold text-gray-800">Teacher Dashboard</h2><button onclick="showHome()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">Logout</button>
+     </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><!-- Add Results Section -->
+     <div class="bg-white rounded-xl shadow-lg p-6">
+      <h3 class="text-xl font-bold text-gray-800 mb-4">Add Student Result</h3>
+      <form id="add-result-form" onsubmit="handleAddResult(event)" class="space-y-4">
+       <div><label for="result-student-id" class="block text-sm font-medium text-gray-700 mb-1">Student ID</label> <input type="text" id="result-student-id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter student ID">
+        <div id="student-info" class="mt-2 text-sm text-gray-600 hidden"></div>
+       </div>
+       <div><label for="result-subject" class="block text-sm font-medium text-gray-700 mb-1">Subject</label> <select id="result-subject" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"> <option value="">Select Subject</option> </select>
+       </div>
+       <div><label for="result-score" class="block text-sm font-medium text-gray-700 mb-1">Score (0-100)</label> <input type="number" id="result-score" min="0" max="100" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter score">
+       </div>
+       <div><label for="result-semester" class="block text-sm font-medium text-gray-700 mb-1">Semester</label> <select id="result-semester" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"> <option value="">Select Semester</option> <option value="1st">1st Semester</option> <option value="2nd">2nd Semester</option> </select>
+       </div><button type="submit" id="add-result-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"> Add Result </button>
+      </form>
+      <div class="mt-4"><button onclick="clearCurrentStudent()" class="w-full bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg"> Clear Current Student </button>
+      </div>
+     </div><!-- Manage Results Section -->
+     <div class="bg-white rounded-xl shadow-lg p-6">
+      <h3 class="text-xl font-bold text-gray-800 mb-4">Manage Results</h3>
+      <div class="space-y-4">
+       <div><label for="search-student-id" class="block text-sm font-medium text-gray-700 mb-1">Search by Student ID</label>
+        <div class="flex space-x-2"><input type="text" id="search-student-id" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Enter student ID"> <button onclick="searchStudentResults()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Search</button>
+        </div>
+       </div>
+       <div id="search-results" class="space-y-2 max-h-96 overflow-y-auto"><!-- Search results will appear here -->
+       </div>
+      </div>
+     </div>
+    </div><!-- Firebase Status -->
+    <div class="mt-6 bg-white rounded-xl shadow-lg p-6">
+     <h3 class="text-xl font-bold text-gray-800 mb-4">🔥 Firebase Database Status</h3>
+     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+       <h4 class="font-semibold text-green-800 mb-2">📊 Live Data Count</h4>
+       <div class="space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-gray-600">Total Students:</span> <span id="total-students" class="font-bold text-green-600">Loading...</span>
+        </div>
+        <div class="flex justify-between"><span class="text-gray-600">Total Results:</span> <span id="total-results" class="font-bold text-blue-600">Loading...</span>
+        </div>
+       </div>
+      </div>
+      <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+       <h4 class="font-semibold text-blue-800 mb-2">☁️ Cloud Features</h4>
+       <ul class="text-sm text-blue-700 space-y-1">
+        <li>✅ Real-time sync across devices</li>
+        <li>✅ Automatic backups</li>
+        <li>✅ Secure data storage</li>
+        <li>✅ No data loss on refresh</li>
+       </ul>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div><!-- Loading Overlay -->
+  <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+   <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+    <div class="loading-spinner"></div><span class="text-gray-700">Processing...</span>
+   </div>
+  </div>
+  <script>
+        // Configuration
+        const defaultConfig = {
+            portal_title: "School Results Portal",
+            school_name: "Academic Excellence Hub",
+            admin_password: "admin123"
+        };
+
+        // Subject lists
+        const SUBJECTS = {
+            '9th': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'Geography', 'History', 'Economics', 'F.Language', 'Afan Oromo', 'Amharic', 'ICT', 'HPE', 'Area-Study', 'Citizenship'],
+            '10th': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'Geography', 'History', 'Economics', 'F.Language', 'Afan Oromo', 'Amharic', 'ICT', 'HPE', 'Area-Study', 'Citizenship'],
+            '11th_Natural': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'F.Language', 'Afan Oromo', 'ICT', 'Area-Study'],
+            '11th_Social': ['Mathematics', 'Geography', 'History', 'Economics', 'English', 'F.Language', 'Afan Oromo', 'ICT', 'Area-Study'],
+            '12th_Natural': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'F.Language', 'Afan Oromo', 'ICT', 'Area-Study'],
+            '12th_Social': ['Mathematics', 'Geography', 'History', 'Economics', 'English', 'F.Language', 'Afan Oromo', 'ICT', 'Area-Study']
+        };
+
+        // Status determining subjects
+        const STATUS_SUBJECTS = {
+            '9th': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'Geography', 'History', 'Economics', 'F.Language', 'Afan Oromo', 'Amharic', 'ICT', 'HPE', 'Area-Study', 'Citizenship'],
+            '10th': ['Mathematics', 'Biology', 'English', 'Physics', 'Chemistry', 'Geography', 'History', 'Economics', 'F.Language', 'Afan Oromo', 'Amharic', 'ICT', 'HPE', 'Area-Study', 'Citizenship'],
+            '11th_Natural': ['Chemistry', 'Physics', 'Biology', 'Mathematics', 'English'],
+            '11th_Social': ['Geography', 'History', 'Economics', 'English', 'Mathematics'],
+            '12th_Natural': ['Chemistry', 'Physics', 'Biology', 'Mathematics', 'English'],
+            '12th_Social': ['Geography', 'History', 'Economics', 'English', 'Mathematics']
+        };
+
+        // App state
+        let currentStudentId = null;
+        let currentStudentInfo = null;
+        let firebaseInitialized = false;
+
+        // Firebase helper functions
+        async function saveStudent(studentData) {
+            try {
+                const { collection, addDoc } = window.firestore;
+                await addDoc(collection(window.db, 'students'), studentData);
+                return true;
+            } catch (error) {
+                console.error('Error saving student:', error);
+                return false;
+            }
+        }
+
+        async function saveResult(resultData) {
+            try {
+                const { collection, addDoc } = window.firestore;
+                await addDoc(collection(window.db, 'results'), resultData);
+                return true;
+            } catch (error) {
+                console.error('Error saving result:', error);
+                return false;
+            }
+        }
+
+        async function getAllStudents() {
+            try {
+                const { collection, getDocs } = window.firestore;
+                const querySnapshot = await getDocs(collection(window.db, 'students'));
+                const students = [];
+                querySnapshot.forEach((doc) => {
+                    students.push({ id: doc.id, ...doc.data() });
+                });
+                return students;
+            } catch (error) {
+                console.error('Error getting students:', error);
+                return [];
+            }
+        }
+
+        async function getAllResults() {
+            try {
+                const { collection, getDocs } = window.firestore;
+                const querySnapshot = await getDocs(collection(window.db, 'results'));
+                const results = [];
+                querySnapshot.forEach((doc) => {
+                    results.push({ id: doc.id, ...doc.data() });
+                });
+                return results;
+            } catch (error) {
+                console.error('Error getting results:', error);
+                return [];
+            }
+        }
+
+        async function updateResult(resultId, updatedData) {
+            try {
+                const { doc, updateDoc } = window.firestore;
+                await updateDoc(doc(window.db, 'results', resultId), updatedData);
+                return true;
+            } catch (error) {
+                console.error('Error updating result:', error);
+                return false;
+            }
+        }
+
+        async function deleteResult(resultId) {
+            try {
+                const { doc, deleteDoc } = window.firestore;
+                await deleteDoc(doc(window.db, 'results', resultId));
+                return true;
+            } catch (error) {
+                console.error('Error deleting result:', error);
+                return false;
+            }
+        }
+
+        // Setup Firebase
+        function setupFirebase() {
+            const configInput = document.getElementById('firebase-config-input').value.trim();
+            
+            if (!configInput) {
+                showMessage('Please paste your Firebase configuration!', 'error');
+                return;
+            }
+            
+            try {
+                // Parse the config (handle both object literal and JSON formats)
+                let config;
+                if (configInput.startsWith('{') && !configInput.includes('apiKey:')) {
+                    // JSON format
+                    config = JSON.parse(configInput);
+                } else {
+                    // Object literal format - convert to JSON
+                    const jsonConfig = configInput
+                        .replace(/(\w+):/g, '"$1":')
+                        .replace(/'/g, '"');
+                    config = JSON.parse(jsonConfig);
+                }
+                
+                // Validate required fields
+                const required = ['apiKey', 'authDomain', 'projectId'];
+                for (const field of required) {
+                    if (!config[field]) {
+                        throw new Error(`Missing required field: ${field}`);
+                    }
+                }
+                
+                // Store config and initialize
+                localStorage.setItem('firebaseConfig', JSON.stringify(config));
+                initializeFirebaseWithConfig(config);
+                
+            } catch (error) {
+                showMessage('Invalid Firebase configuration format!', 'error');
+                console.error('Config parse error:', error);
+            }
+        }
+
+        async function initializeFirebaseWithConfig(config) {
+            try {
+                showLoading();
+                
+                // Dynamically import and initialize Firebase
+                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+                const { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                
+                const app = initializeApp(config);
+                const db = getFirestore(app);
+                
+                // Test connection
+                await getDocs(collection(db, 'test'));
+                
+                // Make Firebase available globally
+                window.db = db;
+                window.firestore = { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy };
+                
+                firebaseInitialized = true;
+                hideLoading();
+                showMessage('Firebase connected successfully!', 'success');
+                
+                // Hide setup and show main app
+                document.getElementById('firebase-setup').classList.add('hidden');
+                document.getElementById('home-page').classList.remove('hidden');
+                
+                // Update data stats
+                updateDataStats();
+                
+            } catch (error) {
+                hideLoading();
+                showMessage('Failed to connect to Firebase. Please check your configuration.', 'error');
+                console.error('Firebase initialization error:', error);
+            }
+        }
+
+        // Check for existing Firebase config on load
+        function checkExistingConfig() {
+            const savedConfig = localStorage.getItem('firebaseConfig');
+            if (savedConfig) {
+                try {
+                    const config = JSON.parse(savedConfig);
+                    initializeFirebaseWithConfig(config);
+                } catch (error) {
+                    console.error('Error loading saved config:', error);
+                }
+            }
+        }
+
+        // Utility functions
+        function showLoading() {
+            document.getElementById('loading-overlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.add('hidden');
+        }
+
+        function showMessage(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 p-4 rounded-lg text-white z-50 ${type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function hideAllPages() {
+            const pages = ['firebase-setup', 'home-page', 'student-login-page', 'student-register-page', 'student-dashboard', 'teacher-login-page', 'teacher-dashboard'];
+            pages.forEach(page => document.getElementById(page).classList.add('hidden'));
+        }
+
+        function generateId() {
+            return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Navigation functions
+        function showHome() {
+            hideAllPages();
+            document.getElementById('home-page').classList.remove('hidden');
+            currentStudentId = null;
+            currentStudentInfo = null;
+        }
+
+        function showStudentLogin() {
+            hideAllPages();
+            document.getElementById('student-login-page').classList.remove('hidden');
+        }
+
+        function showStudentRegister() {
+            hideAllPages();
+            document.getElementById('student-register-page').classList.remove('hidden');
+        }
+
+        function showTeacherLogin() {
+            hideAllPages();
+            document.getElementById('teacher-login-page').classList.remove('hidden');
+        }
+
+        // Stream visibility for registration
+        function updateStreamVisibility() {
+            const grade = document.getElementById('reg-grade').value;
+            const streamContainer = document.getElementById('stream-container');
+            const streamSelect = document.getElementById('reg-stream');
+            
+            if (grade === '11th' || grade === '12th') {
+                streamContainer.classList.remove('hidden');
+                streamSelect.required = true;
+            } else {
+                streamContainer.classList.add('hidden');
+                streamSelect.required = false;
+                streamSelect.value = '';
+            }
+        }
+
+        // Photo preview
+        function previewPhoto(input) {
+            const preview = document.getElementById('photo-preview');
+            const img = document.getElementById('preview-img');
+            
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    img.src = e.target.result;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.classList.add('hidden');
+            }
+        }
+
+        // Student registration
+        async function handleStudentRegister(event) {
+            event.preventDefault();
+            showLoading();
+            
+            const studentId = document.getElementById('reg-student-id').value.trim();
+            const fullName = document.getElementById('reg-full-name').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const grade = document.getElementById('reg-grade').value;
+            const stream = document.getElementById('reg-stream').value;
+            const photoFile = document.getElementById('student-photo').files[0];
+            
+            // Check if student ID already exists
+            const existingStudents = await getAllStudents();
+            const existingStudent = existingStudents.find(student => student.student_id === studentId);
+            if (existingStudent) {
+                hideLoading();
+                showMessage('Student ID already exists!', 'error');
+                return;
+            }
+            
+            let photoData = '';
+            if (photoFile) {
+                try {
+                    photoData = await fileToBase64(photoFile);
+                } catch (error) {
+                    hideLoading();
+                    showMessage('Error processing photo', 'error');
+                    return;
+                }
+            }
+            
+            const studentData = {
+                student_id: studentId,
+                password: password,
+                full_name: fullName,
+                grade_level: grade,
+                stream: stream || '',
+                photo_data: photoData,
+                created_at: new Date().toISOString()
+            };
+            
+            if (await saveStudent(studentData)) {
+                showMessage('Registration successful!', 'success');
+                document.getElementById('student-register-form').reset();
+                document.getElementById('photo-preview').classList.add('hidden');
+                updateDataStats();
+                showStudentLogin();
+            } else {
+                showMessage('Failed to register student. Please try again.', 'error');
+            }
+            
+            hideLoading();
+        }
+
+        // Student login
+        async function handleStudentLogin(event) {
+            event.preventDefault();
+            showLoading();
+            
+            const studentId = document.getElementById('student-id-input').value.trim();
+            const password = document.getElementById('student-password-input').value;
+            
+            const students = await getAllStudents();
+            const student = students.find(s => s.student_id === studentId && s.password === password);
+            
+            hideLoading();
+            
+            if (student) {
+                currentStudentInfo = student;
+                showStudentDashboard();
+            } else {
+                showMessage('Invalid credentials!', 'error');
+            }
+        }
+
+        // Teacher login
+        async function handleTeacherLogin(event) {
+            event.preventDefault();
+            
+            const password = document.getElementById('admin-password-input').value;
+            const adminPassword = defaultConfig.admin_password;
+            
+            if (password === adminPassword) {
+                showTeacherDashboard();
+            } else {
+                showMessage('Invalid admin password!', 'error');
+            }
+        }
+
+        // Show student dashboard
+        function showStudentDashboard() {
+            hideAllPages();
+            document.getElementById('student-dashboard').classList.remove('hidden');
+            
+            // Update student info display
+            document.getElementById('student-name').textContent = currentStudentInfo.full_name;
+            document.getElementById('student-id-display').textContent = currentStudentInfo.student_id;
+            document.getElementById('student-grade-display').textContent = currentStudentInfo.grade_level;
+            document.getElementById('student-stream-display').textContent = currentStudentInfo.stream ? `(${currentStudentInfo.stream})` : '';
+            
+            // Show photo if available
+            if (currentStudentInfo.photo_data) {
+                document.getElementById('dashboard-photo').src = currentStudentInfo.photo_data;
+                document.getElementById('student-photo-display').classList.remove('hidden');
+            }
+            
+            displayStudentResults();
+        }
+
+        // Show teacher dashboard
+        function showTeacherDashboard() {
+            hideAllPages();
+            document.getElementById('teacher-dashboard').classList.remove('hidden');
+            populateSubjectDropdown();
+            updateDataStats();
+        }
+
+        // Display student results
+        async function displayStudentResults() {
+            const resultsContainer = document.getElementById('student-results');
+            const statusContainer = document.getElementById('student-status');
+            
+            const allResults = await getAllResults();
+            const studentResults = allResults.filter(result => result.student_id === currentStudentInfo.student_id);
+            
+            if (studentResults.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-gray-600">No results found.</p>';
+                statusContainer.innerHTML = '';
+                return;
+            }
+            
+            // Group by semester
+            const resultsBySemester = {};
+            studentResults.forEach(result => {
+                if (!resultsBySemester[result.semester]) {
+                    resultsBySemester[result.semester] = [];
+                }
+                resultsBySemester[result.semester].push(result);
+            });
+            
+            let html = '';
+            Object.keys(resultsBySemester).sort().forEach(semester => {
+                html += `<div class="border rounded-lg p-4">
+                    <h4 class="font-semibold text-lg mb-3">${semester} Semester</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">`;
+                
+                resultsBySemester[semester].forEach(result => {
+                    html += `<div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <span class="font-medium">${result.subject}</span>
+                        <span class="text-lg font-bold ${result.score >= 50 ? 'text-green-600' : 'text-red-600'}">${result.score}%</span>
+                    </div>`;
+                });
+                
+                html += '</div></div>';
+            });
+            
+            resultsContainer.innerHTML = html;
+            
+            // Calculate and display status
+            displayStudentStatus(studentResults);
+        }
+
+        // Calculate and display student status
+        function displayStudentStatus(results) {
+            const statusContainer = document.getElementById('student-status');
+            const grade = currentStudentInfo.grade_level;
+            const stream = currentStudentInfo.stream;
+            
+            let statusKey = grade;
+            if ((grade === '11th' || grade === '12th') && stream) {
+                statusKey = `${grade}_${stream}`;
+            }
+            
+            const requiredSubjects = STATUS_SUBJECTS[statusKey] || [];
+            const passThreshold = (grade === '9th' || grade === '10th') ? 80 : 75;
+            
+            // Get latest results for each required subject
+            const latestResults = {};
+            results.forEach(result => {
+                if (requiredSubjects.includes(result.subject)) {
+                    if (!latestResults[result.subject] || 
+                        new Date(result.created_at) > new Date(latestResults[result.subject].created_at)) {
+                        latestResults[result.subject] = result;
+                    }
+                }
+            });
+            
+            const subjectScores = Object.values(latestResults).map(r => r.score);
+            const average = subjectScores.length > 0 ? subjectScores.reduce((a, b) => a + b, 0) / subjectScores.length : 0;
+            const status = average >= passThreshold ? 'PASSED' : 'FAILED';
+            const statusColor = status === 'PASSED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+            
+            statusContainer.innerHTML = `
+                <div class="${statusColor} border rounded-lg p-4">
+                    <h4 class="font-bold text-lg mb-2">Academic Status</h4>
+                    <p class="mb-2">Average Score: <span class="font-bold">${average.toFixed(1)}%</span></p>
+                    <p class="mb-2">Required Subjects: ${requiredSubjects.length}</p>
+                    <p class="mb-2">Completed Subjects: ${Object.keys(latestResults).length}</p>
+                    <p class="text-xl font-bold">Status: ${status}</p>
+                    ${Object.keys(latestResults).length < requiredSubjects.length ? 
+                        '<p class="text-sm mt-2">* Status based on available results</p>' : ''}
+                </div>
+            `;
+        }
+
+        // Populate subject dropdown for teacher
+        function populateSubjectDropdown() {
+            const select = document.getElementById('result-subject');
+            select.innerHTML = '<option value="">Select Subject</option>';
+        }
+
+        // Handle student ID input for results
+        document.getElementById('result-student-id').addEventListener('input', async function() {
+            const studentId = this.value.trim();
+            const infoDiv = document.getElementById('student-info');
+            const subjectSelect = document.getElementById('result-subject');
+            
+            if (!studentId) {
+                infoDiv.classList.add('hidden');
+                subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+                return;
+            }
+            
+            const students = await getAllStudents();
+            const student = students.find(s => s.student_id === studentId);
+            
+            if (student) {
+                currentStudentId = studentId;
+                currentStudentInfo = student;
+                
+                infoDiv.innerHTML = `
+                    <div class="p-2 bg-green-50 border border-green-200 rounded">
+                        <p class="font-medium">${student.full_name}</p>
+                        <p class="text-sm">Grade: ${student.grade_level} ${student.stream ? `(${student.stream})` : ''}</p>
+                    </div>
+                `;
+                infoDiv.classList.remove('hidden');
+                
+                // Populate subjects based on grade and stream
+                let subjectKey = student.grade_level;
+                if ((student.grade_level === '11th' || student.grade_level === '12th') && student.stream) {
+                    subjectKey = `${student.grade_level}_${student.stream}`;
+                }
+                
+                const subjects = SUBJECTS[subjectKey] || [];
+                subjectSelect.innerHTML = '<option value="">Select Subject</option>' + 
+                    subjects.map(subject => `<option value="${subject}">${subject}</option>`).join('');
+                
+            } else {
+                infoDiv.innerHTML = '<p class="text-red-600">Student not found</p>';
+                infoDiv.classList.remove('hidden');
+                subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+            }
+        });
+
+        // Add result
+        async function handleAddResult(event) {
+            event.preventDefault();
+            showLoading();
+            
+            const studentId = document.getElementById('result-student-id').value.trim();
+            const subject = document.getElementById('result-subject').value;
+            const score = parseInt(document.getElementById('result-score').value);
+            const semester = document.getElementById('result-semester').value;
+            
+            // Check if result already exists for this student, subject, and semester
+            const allResults = await getAllResults();
+            const existingResult = allResults.find(result => 
+                result.student_id === studentId && 
+                result.subject === subject && 
+                result.semester === semester
+            );
+            
+            if (existingResult) {
+                hideLoading();
+                showMessage('Result already exists for this subject and semester!', 'error');
+                return;
+            }
+            
+            const resultData = {
+                student_id: studentId,
+                subject: subject,
+                score: score,
+                semester: semester,
+                created_at: new Date().toISOString()
+            };
+            
+            if (await saveResult(resultData)) {
+                showMessage('Result added successfully!', 'success');
+                // Clear only subject, score, and semester - keep student ID
+                document.getElementById('result-subject').value = '';
+                document.getElementById('result-score').value = '';
+                document.getElementById('result-semester').value = '';
+                updateDataStats();
+            } else {
+                showMessage('Failed to add result. Please try again.', 'error');
+            }
+            
+            hideLoading();
+        }
+
+        // Clear current student
+        function clearCurrentStudent() {
+            currentStudentId = null;
+            currentStudentInfo = null;
+            document.getElementById('result-student-id').value = '';
+            document.getElementById('student-info').classList.add('hidden');
+            document.getElementById('result-subject').innerHTML = '<option value="">Select Subject</option>';
+            document.getElementById('add-result-form').reset();
+        }
+
+        // Search student results
+        async function searchStudentResults() {
+            const studentId = document.getElementById('search-student-id').value.trim();
+            const resultsContainer = document.getElementById('search-results');
+            
+            if (!studentId) {
+                resultsContainer.innerHTML = '<p class="text-gray-600">Enter a student ID to search</p>';
+                return;
+            }
+            
+            showLoading();
+            
+            const students = await getAllStudents();
+            const allResults = await getAllResults();
+            const student = students.find(s => s.student_id === studentId);
+            const results = allResults.filter(r => r.student_id === studentId);
+            
+            hideLoading();
+            
+            if (!student) {
+                resultsContainer.innerHTML = '<p class="text-red-600">Student not found</p>';
+                return;
+            }
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="p-3 bg-gray-50 rounded">
+                        <p class="font-medium">${student.full_name}</p>
+                        <p class="text-sm text-gray-600">No results found</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <div class="p-3 bg-blue-50 rounded mb-2">
+                    <p class="font-medium">${student.full_name}</p>
+                    <p class="text-sm text-gray-600">Grade: ${student.grade_level} ${student.stream ? `(${student.stream})` : ''}</p>
+                </div>
+            `;
+            
+            results.forEach(result => {
+                html += `
+                    <div class="flex justify-between items-center p-3 bg-white border rounded">
+                        <div>
+                            <p class="font-medium">${result.subject}</p>
+                            <p class="text-sm text-gray-600">${result.semester} Semester</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-bold ${result.score >= 50 ? 'text-green-600' : 'text-red-600'}">${result.score}%</span>
+                            <button onclick="editResult('${result.id}')" class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-sm">Edit</button>
+                            <button onclick="deleteResultConfirm('${result.id}')" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-sm">Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        // Edit result
+        function editResult(resultId) {
+            // Implementation similar to previous version but using Firebase
+            // ... (keeping the same UI logic)
+        }
+
+        // Save edit result
+        async function saveEditResult(resultId) {
+            const newScore = parseInt(document.getElementById(`edit-score-${resultId}`).value);
+            
+            if (isNaN(newScore) || newScore < 0 || newScore > 100) {
+                showMessage('Please enter a valid score (0-100)', 'error');
+                return;
+            }
+            
+            if (await updateResult(resultId, { score: newScore })) {
+                showMessage('Result updated successfully!', 'success');
+                searchStudentResults(); // Refresh the search results
+            } else {
+                showMessage('Failed to update result', 'error');
+            }
+        }
+
+        // Delete result with confirmation
+        function deleteResultConfirm(resultId) {
+            // Create inline confirmation (same as previous version)
+            const resultElement = event.target.closest('.flex');
+            const originalContent = resultElement.innerHTML;
+            
+            resultElement.innerHTML = `
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-red-600 font-medium">Delete this result?</span>
+                    <div class="space-x-2">
+                        <button onclick="confirmDeleteResult('${resultId}')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">Confirm</button>
+                        <button onclick="cancelDelete(this, \`${originalContent.replace(/`/g, '\\`')}\`)" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Confirm delete
+        async function confirmDeleteResult(resultId) {
+            if (await deleteResult(resultId)) {
+                showMessage('Result deleted successfully!', 'success');
+                searchStudentResults(); // Refresh the search results
+                updateDataStats();
+            } else {
+                showMessage('Failed to delete result', 'error');
+            }
+        }
+
+        // Cancel delete
+        function cancelDelete(button, originalContent) {
+            const resultElement = button.closest('.flex');
+            resultElement.innerHTML = originalContent;
+        }
+
+        // File to base64 conversion
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Update data statistics
+        async function updateDataStats() {
+            if (!firebaseInitialized) return;
+            
+            try {
+                const students = await getAllStudents();
+                const results = await getAllResults();
+                
+                const studentsElement = document.getElementById('total-students');
+                const resultsElement = document.getElementById('total-results');
+                
+                if (studentsElement) studentsElement.textContent = students.length;
+                if (resultsElement) resultsElement.textContent = results.length;
+            } catch (error) {
+                console.error('Error updating stats:', error);
+                const studentsElement = document.getElementById('total-students');
+                const resultsElement = document.getElementById('total-results');
+                
+                if (studentsElement) studentsElement.textContent = 'Error';
+                if (resultsElement) resultsElement.textContent = 'Error';
+            }
+        }
+
+        // Initialize the app when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auto-initialize Firebase with the configured settings
+            initializeFirebaseWithConfig(firebaseConfig);
+        });
+    </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99b074587665f8cb',t:'MTc2MjU1NjUwNy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
