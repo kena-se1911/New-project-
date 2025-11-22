@@ -1,0 +1,998 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Attendance System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        .status-present { background-color: #d1fae5; }
+        .status-absent { background-color: #fee2e2; }
+        .status-late { background-color: #fef3c7; }
+        .needs-attention { background-color: #fecaca !important; }
+        .late-alert { background-color: #fef08a !important; }
+        .sidebar { min-height: calc(100vh - 64px); }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold">School Attendance System</h1>
+            <div id="userInfo" class="flex items-center space-x-4">
+                <span id="userName"></span>
+                <button id="logoutBtn" class="bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-4">
+        <!-- Login Form -->
+        <div id="loginPage" class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md mt-10">
+            <h2 class="text-2xl font-bold mb-6 text-center">Login</h2>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2" for="email">Email</label>
+                    <input type="email" id="email" class="w-full px-3 py-2 border rounded-md" required>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2" for="password">Password</label>
+                    <input type="password" id="password" class="w-full px-3 py-2 border rounded-md" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">Login</button>
+            </form>
+            <div class="mt-4 text-sm text-gray-600">
+                <p><strong>Demo Accounts:</strong></p>
+                <p>Director: director@school.com / password123</p>
+                <p>Teacher (Grade 9A): teacher9a@school.com / password123</p>
+                <p>Teacher (Grade 10A): teacher10a@school.com / password123</p>
+            </div>
+        </div>
+
+        <!-- Main Application -->
+        <div id="app" class="hidden">
+            <div class="flex flex-col md:flex-row gap-4">
+                <!-- Sidebar -->
+                <div class="sidebar bg-white w-full md:w-64 p-4 rounded-lg shadow-md">
+                    <ul class="space-y-2">
+                        <li>
+                            <button id="dashboardBtn" class="w-full text-left p-2 rounded bg-blue-100 text-blue-700 font-medium">
+                                Dashboard
+                            </button>
+                        </li>
+                        <li>
+                            <button id="attendanceBtn" class="w-full text-left p-2 rounded hover:bg-gray-100">
+                                Mark Attendance
+                            </button>
+                        </li>
+                        <li>
+                            <button id="studentsBtn" class="w-full text-left p-2 rounded hover:bg-gray-100">
+                                Student Records
+                            </button>
+                        </li>
+                        <li>
+                            <button id="reportsBtn" class="w-full text-left p-2 rounded hover:bg-gray-100">
+                                Reports
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Main Content -->
+                <div class="flex-1">
+                    <!-- Dashboard -->
+                    <div id="dashboardPage" class="bg-white p-6 rounded-lg shadow-md">
+                        <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+                        
+                        <!-- Stats Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-green-100 p-4 rounded-lg">
+                                <h3 class="text-lg font-semibold">Present Today</h3>
+                                <p id="presentCount" class="text-2xl">0</p>
+                            </div>
+                            <div class="bg-red-100 p-4 rounded-lg">
+                                <h3 class="text-lg font-semibold">Absent Today</h3>
+                                <p id="absentCount" class="text-2xl">0</p>
+                            </div>
+                            <div class="bg-yellow-100 p-4 rounded-lg">
+                                <h3 class="text-lg font-semibold">Late Today</h3>
+                                <p id="lateCount" class="text-2xl">0</p>
+                            </div>
+                            <div class="bg-orange-100 p-4 rounded-lg">
+                                <h3 class="text-lg font-semibold">Needs Attention</h3>
+                                <p id="attentionCount" class="text-2xl">0</p>
+                            </div>
+                        </div>
+
+                        <!-- Alerts Section -->
+                        <div class="mb-6">
+                            <h3 class="text-xl font-semibold mb-4">Alerts</h3>
+                            <div id="alertsContainer" class="space-y-2">
+                                <!-- Alerts will be populated here -->
+                            </div>
+                        </div>
+
+                        <!-- Today's Summary -->
+                        <div>
+                            <h3 class="text-xl font-semibold mb-4">Today's Summary</h3>
+                            <div id="todaySummary" class="bg-gray-50 p-4 rounded-lg">
+                                <!-- Summary will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mark Attendance -->
+                    <div id="attendancePage" class="bg-white p-6 rounded-lg shadow-md hidden">
+                        <h2 class="text-2xl font-bold mb-6">Mark Attendance</h2>
+                        
+                        <!-- Grade/Section Selection -->
+                        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-gray-700 mb-2">Grade</label>
+                                <select id="gradeSelect" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">Select Grade</option>
+                                    <option value="9">Grade 9</option>
+                                    <option value="10">Grade 10</option>
+                                    <option value="11">Grade 11</option>
+                                    <option value="12">Grade 12</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Section</label>
+                                <select id="sectionSelect" class="w-full px-3 py-2 border rounded-md" disabled>
+                                    <option value="">Select Section</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Attendance Form -->
+                        <div id="attendanceForm" class="hidden">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 id="classTitle" class="text-xl font-semibold"></h3>
+                                <p class="text-gray-600" id="currentDate"></p>
+                            </div>
+                            
+                            <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                                <h4 class="font-semibold mb-2">Late Students (Morning Ceremony)</h4>
+                                <div id="lateStudentsContainer" class="space-y-2">
+                                    <!-- Late students checkboxes will be added here -->
+                                </div>
+                            </div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="py-2 px-4 text-left">Student ID</th>
+                                            <th class="py-2 px-4 text-left">Name</th>
+                                            <th class="py-2 px-4 text-left">Attendance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="attendanceTableBody">
+                                        <!-- Students will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="mt-6">
+                                <button id="submitAttendance" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                                    Submit Attendance
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Student Records -->
+                    <div id="studentsPage" class="bg-white p-6 rounded-lg shadow-md hidden">
+                        <h2 class="text-2xl font-bold mb-6">Student Records</h2>
+                        
+                        <!-- Filters -->
+                        <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-gray-700 mb-2">Grade</label>
+                                <select id="filterGrade" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">All Grades</option>
+                                    <option value="9">Grade 9</option>
+                                    <option value="10">Grade 10</option>
+                                    <option value="11">Grade 11</option>
+                                    <option value="12">Grade 12</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Section</label>
+                                <select id="filterSection" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">All Sections</option>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Status</label>
+                                <select id="filterStatus" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">All Status</option>
+                                    <option value="good">Good</option>
+                                    <option value="needs-attention">Needs Attention</option>
+                                    <option value="late-alert">Late Alert</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Search</label>
+                                <input type="text" id="searchStudent" class="w-full px-3 py-2 border rounded-md" placeholder="Search by name">
+                            </div>
+                        </div>
+
+                        <!-- Students Table -->
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white">
+                                <thead>
+                                    <tr class="bg-gray-100">
+                                        <th class="py-2 px-4 text-left">Student ID</th>
+                                        <th class="py-2 px-4 text-left">Name</th>
+                                        <th class="py-2 px-4 text-left">Grade</th>
+                                        <th class="py-2 px-4 text-left">Section</th>
+                                        <th class="py-2 px-4 text-left">Absences</th>
+                                        <th class="py-2 px-4 text-left">Lates</th>
+                                        <th class="py-2 px-4 text-left">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="studentsTableBody">
+                                    <!-- Students will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Reports -->
+                    <div id="reportsPage" class="bg-white p-6 rounded-lg shadow-md hidden">
+                        <h2 class="text-2xl font-bold mb-6">Reports</h2>
+                        
+                        <!-- Report Controls -->
+                        <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-gray-700 mb-2">Grade</label>
+                                <select id="reportGrade" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">All Grades</option>
+                                    <option value="9">Grade 9</option>
+                                    <option value="10">Grade 10</option>
+                                    <option value="11">Grade 11</option>
+                                    <option value="12">Grade 12</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Section</label>
+                                <select id="reportSection" class="w-full px-3 py-2 border rounded-md">
+                                    <option value="">All Sections</option>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Start Date</label>
+                                <input type="date" id="startDate" class="w-full px-3 py-2 border rounded-md">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">End Date</label>
+                                <input type="date" id="endDate" class="w-full px-3 py-2 border rounded-md">
+                            </div>
+                        </div>
+
+                        <!-- Report Actions -->
+                        <div class="mb-6 flex space-x-4">
+                            <button id="generateReport" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                                Generate Report
+                            </button>
+                            <button id="exportPDF" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+                                Export PDF
+                            </button>
+                            <button id="exportExcel" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
+                                Export Excel
+                            </button>
+                        </div>
+
+                        <!-- Report Results -->
+                        <div id="reportResults" class="hidden">
+                            <h3 class="text-xl font-semibold mb-4">Report Results</h3>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white" id="reportTable">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="py-2 px-4 text-left">Student ID</th>
+                                            <th class="py-2 px-4 text-left">Name</th>
+                                            <th class="py-2 px-4 text-left">Grade</th>
+                                            <th class="py-2 px-4 text-left">Section</th>
+                                            <th class="py-2 px-4 text-left">Total Absences</th>
+                                            <th class="py-2 px-4 text-left">Total Lates</th>
+                                            <th class="py-2 px-4 text-left">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="reportTableBody">
+                                        <!-- Report data will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Database structure and initial data
+        const sectionsByGrade = {
+            '9': ['A', 'B', 'C'],
+            '10': ['A'],
+            '11': ['A', 'B', 'C', 'D'],
+            '12': ['A', 'B']
+        };
+
+        // Initialize data in localStorage if not exists
+        function initializeData() {
+            if (!localStorage.getItem('users')) {
+                const users = [
+                    { id: 1, email: 'director@school.com', password: 'password123', name: 'School Director', role: 'director' },
+                    { id: 2, email: 'teacher9a@school.com', password: 'password123', name: 'Teacher 9A', role: 'teacher', gradeAccess: ['9'], sectionAccess: ['A'] },
+                    { id: 3, email: 'teacher10a@school.com', password: 'password123', name: 'Teacher 10A', role: 'teacher', gradeAccess: ['10'], sectionAccess: ['A'] },
+                    { id: 4, email: 'teacher11a@school.com', password: 'password123', name: 'Teacher 11A', role: 'teacher', gradeAccess: ['11'], sectionAccess: ['A'] },
+                    { id: 5, email: 'teacher11b@school.com', password: 'password123', name: 'Teacher 11B', role: 'teacher', gradeAccess: ['11'], sectionAccess: ['B'] },
+                    { id: 6, email: 'teacher12a@school.com', password: 'password123', name: 'Teacher 12A', role: 'teacher', gradeAccess: ['12'], sectionAccess: ['A'] }
+                ];
+                localStorage.setItem('users', JSON.stringify(users));
+            }
+
+            if (!localStorage.getItem('students')) {
+                const students = [];
+                let idCounter = 1;
+                
+                // Generate sample students for each grade and section
+                for (const [grade, sections] of Object.entries(sectionsByGrade)) {
+                    for (const section of sections) {
+                        for (let i = 1; i <= 25; i++) {
+                            students.push({
+                                id: idCounter++,
+                                studentId: `G${grade}${section}${i.toString().padStart(3, '0')}`,
+                                name: `Student ${i} Grade ${grade}${section}`,
+                                grade: grade,
+                                section: section,
+                                gender: i % 2 === 0 ? 'Male' : 'Female',
+                                totalAbsences: Math.floor(Math.random() * 5),
+                                totalLates: Math.floor(Math.random() * 7),
+                                status: 'Active'
+                            });
+                        }
+                    }
+                }
+                localStorage.setItem('students', JSON.stringify(students));
+            }
+
+            if (!localStorage.getItem('attendance')) {
+                localStorage.setItem('attendance', JSON.stringify([]));
+            }
+
+            if (!localStorage.getItem('lateRecords')) {
+                localStorage.setItem('lateRecords', JSON.stringify([]));
+            }
+        }
+
+        // Data management functions
+        function getUsers() {
+            return JSON.parse(localStorage.getItem('users')) || [];
+        }
+
+        function getStudents() {
+            return JSON.parse(localStorage.getItem('students')) || [];
+        }
+
+        function getAttendance() {
+            return JSON.parse(localStorage.getItem('attendance')) || [];
+        }
+
+        function getLateRecords() {
+            return JSON.parse(localStorage.getItem('lateRecords')) || [];
+        }
+
+        function saveAttendance(attendance) {
+            localStorage.setItem('attendance', JSON.stringify(attendance));
+        }
+
+        function saveLateRecords(lateRecords) {
+            localStorage.setItem('lateRecords', JSON.stringify(lateRecords));
+        }
+
+        function saveStudents(students) {
+            localStorage.setItem('students', JSON.stringify(students));
+        }
+
+        // Authentication
+        let currentUser = null;
+
+        function login(email, password) {
+            const users = getUsers();
+            const user = users.find(u => u.email === email && u.password === password);
+            
+            if (user) {
+                currentUser = user;
+                localStorage.setItem('currentUser', JSON.stringify(user));
+                showApp();
+                return true;
+            }
+            return false;
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('currentUser');
+            showLogin();
+        }
+
+        function checkAuth() {
+            const user = localStorage.getItem('currentUser');
+            if (user) {
+                currentUser = JSON.parse(user);
+                showApp();
+            } else {
+                showLogin();
+            }
+        }
+
+        // UI Navigation
+        function showLogin() {
+            document.getElementById('loginPage').classList.remove('hidden');
+            document.getElementById('app').classList.add('hidden');
+        }
+
+        function showApp() {
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            document.getElementById('userName').textContent = currentUser.name;
+            
+            // Show appropriate dashboard based on role
+            if (currentUser.role === 'director') {
+                showDashboard();
+            } else {
+                showAttendancePage();
+            }
+        }
+
+        function showDashboard() {
+            hideAllPages();
+            document.getElementById('dashboardPage').classList.remove('hidden');
+            updateDashboard();
+        }
+
+        function showAttendancePage() {
+            hideAllPages();
+            document.getElementById('attendancePage').classList.remove('hidden');
+            setupAttendancePage();
+        }
+
+        function showStudentsPage() {
+            hideAllPages();
+            document.getElementById('studentsPage').classList.remove('hidden');
+            updateStudentsTable();
+        }
+
+        function showReportsPage() {
+            hideAllPages();
+            document.getElementById('reportsPage').classList.remove('hidden');
+        }
+
+        function hideAllPages() {
+            document.getElementById('dashboardPage').classList.add('hidden');
+            document.getElementById('attendancePage').classList.add('hidden');
+            document.getElementById('studentsPage').classList.add('hidden');
+            document.getElementById('reportsPage').classList.add('hidden');
+        }
+
+        // Dashboard functions
+        function updateDashboard() {
+            const students = getStudents();
+            const attendance = getAttendance();
+            const lateRecords = getLateRecords();
+            
+            const today = new Date().toISOString().split('T')[0];
+            const todayAttendance = attendance.filter(a => a.date === today);
+            const todayLateRecords = lateRecords.filter(l => l.date === today);
+            
+            // Calculate stats
+            const presentCount = todayAttendance.filter(a => a.status === 'Present').length;
+            const absentCount = todayAttendance.filter(a => a.status === 'Absent').length;
+            const lateCount = todayLateRecords.length;
+            
+            // Count students with 3+ absences or 5+ lates
+            const needsAttentionCount = students.filter(s => s.totalAbsences >= 3).length;
+            const lateAlertCount = students.filter(s => s.totalLates >= 5).length;
+            
+            // Update UI
+            document.getElementById('presentCount').textContent = presentCount;
+            document.getElementById('absentCount').textContent = absentCount;
+            document.getElementById('lateCount').textContent = lateCount;
+            document.getElementById('attentionCount').textContent = needsAttentionCount + lateAlertCount;
+            
+            // Update alerts
+            updateAlerts(students);
+            
+            // Update today's summary
+            updateTodaySummary(todayAttendance, todayLateRecords);
+        }
+
+        function updateAlerts(students) {
+            const alertsContainer = document.getElementById('alertsContainer');
+            alertsContainer.innerHTML = '';
+            
+            const needsAttention = students.filter(s => s.totalAbsences >= 3);
+            const lateAlerts = students.filter(s => s.totalLates >= 5);
+            
+            if (needsAttention.length === 0 && lateAlerts.length === 0) {
+                alertsContainer.innerHTML = '<p class="text-green-600">No alerts at this time.</p>';
+                return;
+            }
+            
+            if (needsAttention.length > 0) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded';
+                alertDiv.innerHTML = `
+                    <strong>Absence Alerts:</strong> ${needsAttention.length} student(s) have 3 or more absences.
+                    <ul class="mt-2">
+                        ${needsAttention.map(s => `<li>${s.name} (${s.studentId}) - ${s.totalAbsences} absences</li>`).join('')}
+                    </ul>
+                `;
+                alertsContainer.appendChild(alertDiv);
+            }
+            
+            if (lateAlerts.length > 0) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mt-2';
+                alertDiv.innerHTML = `
+                    <strong>Late Alerts:</strong> ${lateAlerts.length} student(s) have 5 or more late arrivals.
+                    <ul class="mt-2">
+                        ${lateAlerts.map(s => `<li>${s.name} (${s.studentId}) - ${s.totalLates} lates</li>`).join('')}
+                    </ul>
+                `;
+                alertsContainer.appendChild(alertDiv);
+            }
+        }
+
+        function updateTodaySummary(todayAttendance, todayLateRecords) {
+            const summaryContainer = document.getElementById('todaySummary');
+            
+            if (todayAttendance.length === 0) {
+                summaryContainer.innerHTML = '<p class="text-gray-600">No attendance records for today yet.</p>';
+                return;
+            }
+            
+            let summaryHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <h4 class="font-semibold mb-2">Attendance by Grade</h4>
+                        <ul>
+            `;
+            
+            // Group by grade
+            const byGrade = {};
+            todayAttendance.forEach(record => {
+                if (!byGrade[record.grade]) byGrade[record.grade] = { present: 0, absent: 0 };
+                byGrade[record.grade][record.status.toLowerCase()]++;
+            });
+            
+            for (const [grade, counts] of Object.entries(byGrade)) {
+                summaryHTML += `<li>Grade ${grade}: ${counts.present} present, ${counts.absent} absent</li>`;
+            }
+            
+            summaryHTML += `
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold mb-2">Late Students Today</h4>
+            `;
+            
+            if (todayLateRecords.length === 0) {
+                summaryHTML += '<p>No late students today.</p>';
+            } else {
+                summaryHTML += '<ul>';
+                todayLateRecords.forEach(record => {
+                    const student = getStudents().find(s => s.id === record.studentId);
+                    if (student) {
+                        summaryHTML += `<li>${student.name} (Grade ${student.grade}${student.section})</li>`;
+                    }
+                });
+                summaryHTML += '</ul>';
+            }
+            
+            summaryHTML += '</div></div>';
+            summaryContainer.innerHTML = summaryHTML;
+        }
+
+        // Attendance page functions
+        function setupAttendancePage() {
+            const gradeSelect = document.getElementById('gradeSelect');
+            const sectionSelect = document.getElementById('sectionSelect');
+            
+            // If teacher, limit to their assigned grade/section
+            if (currentUser.role === 'teacher') {
+                gradeSelect.innerHTML = '';
+                currentUser.gradeAccess.forEach(grade => {
+                    const option = document.createElement('option');
+                    option.value = grade;
+                    option.textContent = `Grade ${grade}`;
+                    gradeSelect.appendChild(option);
+                });
+                
+                // Auto-select if only one grade
+                if (currentUser.gradeAccess.length === 1) {
+                    gradeSelect.value = currentUser.gradeAccess[0];
+                    updateSectionOptions();
+                    
+                    // Auto-select if only one section
+                    if (currentUser.sectionAccess.length === 1) {
+                        sectionSelect.value = currentUser.sectionAccess[0];
+                        loadAttendanceForm();
+                    }
+                }
+            }
+            
+            gradeSelect.addEventListener('change', updateSectionOptions);
+            sectionSelect.addEventListener('change', loadAttendanceForm);
+            
+            // Set current date
+            document.getElementById('currentDate').textContent = new Date().toLocaleDateString();
+        }
+
+        function updateSectionOptions() {
+            const gradeSelect = document.getElementById('gradeSelect');
+            const sectionSelect = document.getElementById('sectionSelect');
+            const grade = gradeSelect.value;
+            
+            sectionSelect.innerHTML = '<option value="">Select Section</option>';
+            sectionSelect.disabled = !grade;
+            
+            if (grade) {
+                let sections = sectionsByGrade[grade];
+                
+                // If teacher, limit to their assigned sections
+                if (currentUser.role === 'teacher') {
+                    sections = sections.filter(s => currentUser.sectionAccess.includes(s));
+                }
+                
+                sections.forEach(section => {
+                    const option = document.createElement('option');
+                    option.value = section;
+                    option.textContent = `Section ${section}`;
+                    sectionSelect.appendChild(option);
+                });
+            }
+        }
+
+        function loadAttendanceForm() {
+            const grade = document.getElementById('gradeSelect').value;
+            const section = document.getElementById('sectionSelect').value;
+            
+            if (!grade || !section) return;
+            
+            document.getElementById('classTitle').textContent = `Grade ${grade} - Section ${section}`;
+            document.getElementById('attendanceForm').classList.remove('hidden');
+            
+            // Load students for this grade and section
+            const students = getStudents().filter(s => s.grade === grade && s.section === section);
+            const tableBody = document.getElementById('attendanceTableBody');
+            const lateContainer = document.getElementById('lateStudentsContainer');
+            
+            tableBody.innerHTML = '';
+            lateContainer.innerHTML = '';
+            
+            students.forEach(student => {
+                // Add to attendance table
+                const row = document.createElement('tr');
+                row.className = 'border-b';
+                row.innerHTML = `
+                    <td class="py-2 px-4">${student.studentId}</td>
+                    <td class="py-2 px-4">${student.name}</td>
+                    <td class="py-2 px-4">
+                        <div class="flex space-x-4">
+                            <label class="flex items-center">
+                                <input type="radio" name="attendance-${student.id}" value="Present" checked class="mr-2">
+                                <span class="text-green-600">Present</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="attendance-${student.id}" value="Absent" class="mr-2">
+                                <span class="text-red-600">Absent</span>
+                            </label>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+                
+                // Add to late students container
+                const lateDiv = document.createElement('div');
+                lateDiv.className = 'flex items-center';
+                lateDiv.innerHTML = `
+                    <input type="checkbox" id="late-${student.id}" class="mr-2">
+                    <label for="late-${student.id}">${student.name} (${student.studentId})</label>
+                `;
+                lateContainer.appendChild(lateDiv);
+            });
+            
+            // Set up submit button
+            document.getElementById('submitAttendance').onclick = submitAttendance;
+        }
+
+        function submitAttendance() {
+            const grade = document.getElementById('gradeSelect').value;
+            const section = document.getElementById('sectionSelect').value;
+            const today = new Date().toISOString().split('T')[0];
+            
+            const students = getStudents().filter(s => s.grade === grade && s.section === section);
+            const attendanceRecords = getAttendance();
+            const lateRecords = getLateRecords();
+            const allStudents = getStudents();
+            
+            // Process attendance
+            students.forEach(student => {
+                const status = document.querySelector(`input[name="attendance-${student.id}"]:checked`).value;
+                
+                // Check if record already exists for today
+                const existingIndex = attendanceRecords.findIndex(
+                    a => a.studentId === student.id && a.date === today
+                );
+                
+                if (existingIndex !== -1) {
+                    // Update existing record
+                    attendanceRecords[existingIndex].status = status;
+                } else {
+                    // Add new record
+                    attendanceRecords.push({
+                        id: Date.now() + Math.random(),
+                        studentId: student.id,
+                        date: today,
+                        status: status,
+                        markedBy: currentUser.id,
+                        grade: grade,
+                        section: section
+                    });
+                }
+                
+                // Update student's total absences if status is Absent
+                if (status === 'Absent') {
+                    const studentIndex = allStudents.findIndex(s => s.id === student.id);
+                    if (studentIndex !== -1) {
+                        allStudents[studentIndex].totalAbsences++;
+                    }
+                }
+            });
+            
+            // Process late students
+            students.forEach(student => {
+                const isLate = document.getElementById(`late-${student.id}`).checked;
+                
+                if (isLate) {
+                    // Check if late record already exists for today
+                    const existingLate = lateRecords.find(
+                        l => l.studentId === student.id && l.date === today
+                    );
+                    
+                    if (!existingLate) {
+                        // Add new late record
+                        lateRecords.push({
+                            id: Date.now() + Math.random(),
+                            studentId: student.id,
+                            date: today,
+                            markedBy: currentUser.id,
+                            grade: grade,
+                            section: section
+                        });
+                        
+                        // Update student's total lates
+                        const studentIndex = allStudents.findIndex(s => s.id === student.id);
+                        if (studentIndex !== -1) {
+                            allStudents[studentIndex].totalLates++;
+                        }
+                    }
+                }
+            });
+            
+            // Save all data
+            saveAttendance(attendanceRecords);
+            saveLateRecords(lateRecords);
+            saveStudents(allStudents);
+            
+            alert('Attendance submitted successfully!');
+            
+            // If director, go to dashboard; if teacher, stay on attendance page
+            if (currentUser.role === 'director') {
+                showDashboard();
+            }
+        }
+
+        // Students page functions
+        function updateStudentsTable() {
+            const students = getStudents();
+            const filterGrade = document.getElementById('filterGrade').value;
+            const filterSection = document.getElementById('filterSection').value;
+            const filterStatus = document.getElementById('filterStatus').value;
+            const searchTerm = document.getElementById('searchStudent').value.toLowerCase();
+            
+            let filteredStudents = students;
+            
+            // Apply filters
+            if (filterGrade) {
+                filteredStudents = filteredStudents.filter(s => s.grade === filterGrade);
+            }
+            
+            if (filterSection) {
+                filteredStudents = filteredStudents.filter(s => s.section === filterSection);
+            }
+            
+            if (filterStatus) {
+                if (filterStatus === 'needs-attention') {
+                    filteredStudents = filteredStudents.filter(s => s.totalAbsences >= 3);
+                } else if (filterStatus === 'late-alert') {
+                    filteredStudents = filteredStudents.filter(s => s.totalLates >= 5);
+                } else if (filterStatus === 'good') {
+                    filteredStudents = filteredStudents.filter(s => s.totalAbsences < 3 && s.totalLates < 5);
+                }
+            }
+            
+            if (searchTerm) {
+                filteredStudents = filteredStudents.filter(s => 
+                    s.name.toLowerCase().includes(searchTerm) || 
+                    s.studentId.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // Update table
+            const tableBody = document.getElementById('studentsTableBody');
+            tableBody.innerHTML = '';
+            
+            filteredStudents.forEach(student => {
+                const row = document.createElement('tr');
+                
+                // Determine row class based on status
+                let rowClass = 'border-b';
+                if (student.totalAbsences >= 3) {
+                    rowClass += ' needs-attention';
+                } else if (student.totalLates >= 5) {
+                    rowClass += ' late-alert';
+                }
+                
+                // Determine status text
+                let statusText = 'Good';
+                let statusClass = 'text-green-600';
+                if (student.totalAbsences >= 3) {
+                    statusText = 'Needs Attention';
+                    statusClass = 'text-red-600 font-semibold';
+                } else if (student.totalLates >= 5) {
+                    statusText = 'Late Alert';
+                    statusClass = 'text-yellow-600 font-semibold';
+                }
+                
+                row.className = rowClass;
+                row.innerHTML = `
+                    <td class="py-2 px-4">${student.studentId}</td>
+                    <td class="py-2 px-4">${student.name}</td>
+                    <td class="py-2 px-4">${student.grade}</td>
+                    <td class="py-2 px-4">${student.section}</td>
+                    <td class="py-2 px-4">${student.totalAbsences}</td>
+                    <td class="py-2 px-4">${student.totalLates}</td>
+                    <td class="py-2 px-4 ${statusClass}">${statusText}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Reports page functions
+        function setupReportsPage() {
+            document.getElementById('generateReport').onclick = generateReport;
+            document.getElementById('exportPDF').onclick = exportPDF;
+            document.getElementById('exportExcel').onclick = exportExcel;
+            
+            // Set default dates (last 30 days)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 30);
+            
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+        }
+
+        function generateReport() {
+            const grade = document.getElementById('reportGrade').value;
+            const section = document.getElementById('reportSection').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let students = getStudents();
+            
+            // Apply filters
+            if (grade) {
+                students = students.filter(s => s.grade === grade);
+            }
+            
+            if (section) {
+                students = students.filter(s => s.section === section);
+            }
+            
+            // Update report table
+            const tableBody = document.getElementById('reportTableBody');
+            tableBody.innerHTML = '';
+            
+            students.forEach(student => {
+                const row = document.createElement('tr');
+                row.className = 'border-b';
+                
+                // Determine status text
+                let statusText = 'Good';
+                if (student.totalAbsences >= 3) {
+                    statusText = 'Needs Attention';
+                } else if (student.totalLates >= 5) {
+                    statusText = 'Late Alert';
+                }
+                
+                row.innerHTML = `
+                    <td class="py-2 px-4">${student.studentId}</td>
+                    <td class="py-2 px-4">${student.name}</td>
+                    <td class="py-2 px-4">${student.grade}</td>
+                    <td class="py-2 px-4">${student.section}</td>
+                    <td class="py-2 px-4">${student.totalAbsences}</td>
+                    <td class="py-2 px-4">${student.totalLates}</td>
+                    <td class="py-2 px-4">${statusText}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            document.getElementById('reportResults').classList.remove('hidden');
+        }
+
+        function exportPDF() {
+            alert('PDF export would be implemented here with a proper PDF library');
+            // In a real implementation, you would use jsPDF to generate a PDF
+        }
+
+        function exportExcel() {
+            const table = document.getElementById('reportTable');
+            const ws = XLSX.utils.table_to_sheet(table);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Attendance Report");
+            XLSX.writeFile(wb, "attendance_report.xlsx");
+        }
+
+        // Event listeners
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (login(email, password)) {
+                alert('Login successful!');
+            } else {
+                alert('Invalid email or password');
+            }
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+
+        // Navigation buttons
+        document.getElementById('dashboardBtn').addEventListener('click', showDashboard);
+        document.getElementById('attendanceBtn').addEventListener('click', showAttendancePage);
+        document.getElementById('studentsBtn').addEventListener('click', showStudentsPage);
+        document.getElementById('reportsBtn').addEventListener('click', showReportsPage);
+
+        // Filter event listeners for students page
+        document.getElementById('filterGrade').addEventListener('change', updateStudentsTable);
+        document.getElementById('filterSection').addEventListener('change', updateStudentsTable);
+        document.getElementById('filterStatus').addEventListener('change', updateStudentsTable);
+        document.getElementById('searchStudent').addEventListener('input', updateStudentsTable);
+
+        // Initialize the application
+        initializeData();
+        checkAuth();
+        setupReportsPage();
+    </script>
+</body>
+</html>
